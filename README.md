@@ -28,7 +28,8 @@ envelope, use a native subscription instead: it's one less moving part.
 
 ```hcl
 module "sns_relay" {
-  source = "git::https://github.com/High-Trail-Studios/terraform-aws-sns-relay.git?ref=v0.1.0"
+  source  = "High-Trail-Studios/sns-relay/aws"
+  version = "~> 0.1.0"
 
   routes = {
     ops-slack = { adapter = "slack" }
@@ -286,7 +287,11 @@ covers failure alerts through SNS.
 Releases follow [semantic versioning](https://semver.org) and are listed,
 with notes, on the
 [Releases page](https://github.com/High-Trail-Studios/terraform-aws-sns-relay/releases).
-Pin a version with `?ref=` in the source URL.
+The module is published on the
+[Terraform Registry](https://registry.terraform.io/modules/High-Trail-Studios/sns-relay/aws).
+Pin it with `version`. `~> 0.1.0` accepts patch releases only, so a breaking
+0.x minor release never arrives unannounced. Sourcing from Git with
+`?ref=v0.1.0` works too.
 
 Before 1.0, a minor version (0.**x**.0) may contain breaking changes. When it
 does, the release notes say so and explain how to upgrade. Breaking changes
