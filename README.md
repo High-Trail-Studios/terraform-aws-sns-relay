@@ -26,7 +26,7 @@ envelope, use a native subscription instead: it's one less moving part.
 
 ```hcl
 module "sns_relay" {
-  source = "git::https://github.com/<org>/sns-relay.git?ref=v0.1.0"
+  source = "git::https://github.com/High-Trail-Studios/terraform-aws-sns-relay.git?ref=v0.1.0"
 
   routes = {
     ops-slack = { adapter = "slack" }
@@ -274,5 +274,7 @@ terraform init -backend=false && terraform validate
 terraform test                            # mocked AWS provider, no credentials
 ```
 
-CI runs all of this on every PR, on every push to `main`, and weekly. See
-[docs/ci.md](docs/ci.md), which also covers failure alerts through SNS.
+CI runs all of this on every PR, on every push to `main`, and weekly. A
+second workflow deploys the module into a test AWS account, relays real
+alerts, and destroys it again. See [docs/ci.md](docs/ci.md), which also
+covers failure alerts through SNS.

@@ -60,6 +60,11 @@ jobs:
         run: |
           terraform init -backend=false
           terraform validate
+      - name: Validate e2e fixture
+        working-directory: tests/e2e
+        run: |
+          terraform init -backend=false
+          terraform validate
 
   # The single required status check for main. New jobs only need adding to
   # `needs`; branch protection never has to change.
