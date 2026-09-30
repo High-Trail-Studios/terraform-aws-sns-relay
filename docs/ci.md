@@ -56,7 +56,32 @@ so no long-lived AWS keys are stored in GitHub.
      --client-id-list sts.amazonaws.com
    ```
 
-3. **Role.** Only workflow runs on this repo's `main` branch can assume it,
+3. **Subject prefix.** The trust policies below match GitHub's `sub` claim,
+   which starts with a prefix that depends on the repository's settings.
+   Look it up rather than guess. A mismatch fails with a bare "Not
+   authorized to perform sts:AssumeRoleWithWebIdentity":
+
+   ```sh
+   gh api repos/<owner>/<repo>/actions/oidc/customization/sub
+   ```
+
+   - With `"use_immutable_subject": true`, use the returned
+     `sub_claim_prefix`, e.g.
+     `repo:<owner>@<owner-id>/<repo>@<repo-id>`. It contains numeric IDs,
+     so renaming the repository or organization doesn't change it.
+   - Otherwise it is `repo:<owner>/<repo>`, and **renaming the repository
+     changes it**. Update the trust policy when you rename the repository.
+
+   Under `StringEquals`, `*` is a literal character, not a wildcard. Use
+   `StringLike` if you want wildcards, and keep them as narrow as possible.
+
+   If a login still fails, CloudTrail records the `sub` GitHub actually
+   sent: look up `AssumeRoleWithWebIdentity` events and read
+   `userIdentity.principalId`. CloudTrail doesn't record which role a failed
+   login targeted, so also check that the role ARN in the secret is the
+   role you edited.
+
+4. **Role.** Only workflow runs on this repo's `main` branch can assume it,
    and it can only publish to the one topic. Scheduled runs use the default
    branch, so they match.
 
@@ -71,7 +96,7 @@ so no long-lived AWS keys are stored in GitHub.
        "Condition": {
          "StringEquals": {
            "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-           "token.actions.githubusercontent.com:sub": "repo:<owner>/<repo>:ref:refs/heads/main"
+           "token.actions.githubusercontent.com:sub": "<subject-prefix>:ref:refs/heads/main"
          }
        }
      }]
@@ -93,11 +118,7 @@ so no long-lived AWS keys are stored in GitHub.
    If the topic uses a customer-managed KMS key, also allow
    `kms:GenerateDataKey` and `kms:Decrypt` on that key.
 
-   **Renaming the repository changes the `sub` claim.** Update the trust
-   policy when you rename the repository, or alerts will fail with an
-   AssumeRole error.
-
-4. **Repository variables.** These are variables, not secrets, because none
+5. **Repository variables.** These are variables, not secrets, because none
    of the values is a credential:
 
    ```sh
@@ -106,7 +127,7 @@ so no long-lived AWS keys are stored in GitHub.
    gh variable set CI_ALERT_REGION    --body "<region>"
    ```
 
-5. **Test it.** Check the delivery path with
+6. **Test it.** Check the delivery path with
    `aws sns publish --topic-arn <topic-arn> --message test`. The role trusts
    `main` only, so a failing test branch can't exercise the workflow step.
    The first real failure on `main` or a scheduled run will.
@@ -140,7 +161,7 @@ or the workflow itself, weekly (Mondays 07:17 UTC), and on demand. Each run:
 3. Destroys everything, even if an earlier step failed or the run was
    cancelled.
 
-A run takes about five minutes and costs effectively nothing: everything is
+A run takes about three minutes and costs effectively nothing: everything is
 billed per request, well inside the free tier, and lives for minutes.
 
 **What it does not cover:** Slack, the heartbeat, SNS-side redrive, KMS
@@ -186,8 +207,8 @@ means it does not exercise Lambda's retry timing.
    the account, however tightly the names are scoped. Keep nothing else in
    it.
 
-2. **OIDC provider** in that account (same command as in the SNS alert
-   setup below).
+2. **OIDC provider** in that account, and the **subject prefix** for this
+   repository. See steps 2 and 3 of the SNS alert setup above.
 
 3. **Role.** Trust policy. The `pull_request` subject covers same-repository
    PRs; the `main` subject covers scheduled runs and on-demand runs from
@@ -204,8 +225,8 @@ means it does not exercise Lambda's retry timing.
          "StringEquals": {
            "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
            "token.actions.githubusercontent.com:sub": [
-             "repo:<owner>/<repo>:pull_request",
-             "repo:<owner>/<repo>:ref:refs/heads/main"
+             "<subject-prefix>:pull_request",
+             "<subject-prefix>:ref:refs/heads/main"
            ]
          }
        }
@@ -241,7 +262,7 @@ means it does not exercise Lambda's retry timing.
        { "Sid": "SsmDescribe", "Effect": "Allow", "Action": "ssm:DescribeParameters",
          "Resource": "*" },
        { "Sid": "CodeBucket", "Effect": "Allow", "Action": "s3:*",
-         "Resource": ["arn:aws:s3:::ci-e2e-*", "arn:aws:s3:::ci-e2e-*/*"] },
+         "Resource": "arn:aws:s3:::ci-e2e-*" },
        { "Sid": "Roles", "Effect": "Allow",
          "Action": ["iam:CreateRole", "iam:DeleteRole", "iam:GetRole",
                     "iam:TagRole", "iam:UntagRole", "iam:UpdateAssumeRolePolicy",
@@ -274,5 +295,5 @@ means it does not exercise Lambda's retry timing.
    Set it as a **repository** secret: on the GitHub Free plan, private
    repositories can't read organization secrets.
 
-**Renaming the repository changes the `sub` claim**, the same as for the
-SNS alert role.
+Without immutable subjects, **renaming the repository changes the `sub`
+claim**. See the SNS alert setup, step 3.
