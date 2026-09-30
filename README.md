@@ -1,5 +1,7 @@
 # sns-relay
 
+[![test](https://github.com/High-Trail-Studios/terraform-aws-sns-relay/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/High-Trail-Studios/terraform-aws-sns-relay/actions/workflows/test.yml)
+
 A small Terraform module that relays SNS notifications to HTTP destinations
 (Slack, generic JSON webhooks) through a single Lambda, with a dead-letter
 queue, an optional heartbeat, and no secrets in Terraform state.
@@ -278,3 +280,29 @@ CI runs all of this on every PR, on every push to `main`, and weekly. A
 second workflow deploys the module into a test AWS account, relays real
 alerts, and destroys it again. See [docs/ci.md](docs/ci.md), which also
 covers failure alerts through SNS.
+
+## Versioning
+
+Releases follow [semantic versioning](https://semver.org) and are listed,
+with notes, on the
+[Releases page](https://github.com/High-Trail-Studios/terraform-aws-sns-relay/releases).
+Pin a version with `?ref=` in the source URL.
+
+Before 1.0, a minor version (0.**x**.0) may contain breaking changes. When it
+does, the release notes say so and explain how to upgrade. Breaking changes
+include renaming or removing a variable or output, and any change that makes
+Terraform replace a resource that holds state you care about, such as a topic
+or the DLQ.
+
+## License
+
+[MIT](LICENSE).
+
+## About High Trail Studios
+
+[High Trail Studios](https://github.com/High-Trail-Studios) builds small,
+focused infrastructure tools for unglamorous problems: the glue that makes
+cloud environments safer, cheaper, and easier to run. Each tool does one job,
+defaults to the cheapest setup that works, states its IAM permissions and
+its limits, and removes everything it created when you destroy it.
+Issues and pull requests are welcome.
