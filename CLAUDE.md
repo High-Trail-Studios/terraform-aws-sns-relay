@@ -1,4 +1,4 @@
-# sns-alert-relay
+# sns-relay
 
 Relays SNS notifications to a downstream destination.
 
@@ -29,8 +29,19 @@ Relays SNS notifications to a downstream destination.
 
 ## Stack
 
-TBD — no code yet.
+- Terraform module at the repo root (AWS provider 6.x). One SNS topic per
+  route; the Lambda maps an incoming record's `TopicArn` to its route.
+- Lambda: Python 3.14, arm64, standard library only (boto3 from the runtime).
+  Package is zipped by `archive_file` and uploaded to S3 (module-created or
+  caller-supplied bucket).
+- Adapters live in `src/relay/adapters/`; the core (`handler.py`,
+  `transport.py`) owns HTTP, auth, and error handling.
 
 ## Commands
 
-TBD — no build, test, or deploy commands yet.
+- Tests: `python3 -m unittest discover -s tests`
+- Format: `terraform fmt -check -recursive`
+- Validate: `terraform init -backend=false && terraform validate`
+- Terraform tests: `terraform test` (mocked AWS provider; `tests/module.tftest.hcl`)
+- CI: `.github/workflows/test.yml`; `ci-passed` is the required check. See `docs/ci.md`.
+- Locally `terraform` may be OpenTofu; CI runs HashiCorp Terraform.

@@ -1,0 +1,110 @@
+name: test
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    # Weekly, so upstream drift (AWS provider 6.x, Terraform, Python) shows up
+    # even when nobody is committing. Off the hour to dodge the cron rush.
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+
+jobs:
+  python:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14" # matches the Lambda runtime
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
+
+  terraform:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.16.4
+          terraform_wrapper: false
+      - name: Format
+        run: terraform fmt -check -recursive
+      - name: Init
+        run: terraform init -backend=false
+      - name: Validate module
+        run: terraform validate
+      - name: Terraform tests (mocked AWS provider, no credentials)
+        run: terraform test
+      - name: Validate example
+        working-directory: examples/basic
+        run: |
+          terraform init -backend=false
+          terraform validate
+      - name: Validate e2e fixture
+        working-directory: tests/e2e
+        run: |
+          terraform init -backend=false
+          terraform validate
+
+  # The single required status check for main. New jobs only need adding to
+  # `needs`; branch protection never has to change.
+  ci-passed:
+    if: always()
+    needs: [python, terraform]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: All jobs succeeded
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "results: $RESULTS"
+          for r in $RESULTS; do [ "$r" = "success" ] || exit 1; done
+
+  # Scheduled and main-branch failures page a maintainer through SNS. Skipped
+  # on pull requests (red PRs are normal) and when the repo variables are not
+  # set, e.g. on forks. See docs/ci.md.
+  notify-failure:
+    needs: [python, terraform]
+    if: failure() && github.event_name != 'pull_request' && vars.CI_ALERT_TOPIC_ARN != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.CI_ALERT_ROLE_ARN }}
+          aws-region: ${{ vars.CI_ALERT_REGION }}
+      - name: Publish failure alert
+        env:
+          TOPIC_ARN: ${{ vars.CI_ALERT_TOPIC_ARN }}
+          REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          aws sns publish \
+            --topic-arn "$TOPIC_ARN" \
+            --subject "$REPO tests failed ($EVENT)" \
+            --message "Tests failed on main for $REPO (trigger: $EVENT). $RUN_URL"
